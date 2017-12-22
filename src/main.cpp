@@ -68,13 +68,13 @@ void setup(void)
   for(int32_t x=0; x<128; x++)
   {
       tft.drawFastVLine(x, 0, 128, 0xF81F);
-      delay(25);
+      delay(5);
   }
 
   for(int32_t x=0; x<128; x++)
   {
       tft.drawFastHLine(0, x, 128, 0x001F);
-      delay(25);
+      delay(5);
   }
 }
 
