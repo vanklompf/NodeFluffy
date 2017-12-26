@@ -12,9 +12,11 @@
 static const int GPIO_DHT_DATA = 5;
 static const int GPIO_DHT_3V = 16;
 static const int GPIO_DHT_GND = 4;
+static const int GPIO_LED_GREEN = 1;
+static const int GPIO_LED_RED = 10;
 
-static const char* SSID = "Orange-8CC1";
-static const char* PASSWORD = "Sonina473b";
+static const char* SSID = "nowaki_Wifi";
+static const char* PASSWORD = "knowak123";
 
 static const int TEMP_ERROR = 0xFFFF;
 
@@ -28,6 +30,8 @@ static void initDht(void);
 static void initWifi(void);
 static void checkWifi(void);
 static void initLcd(void);
+static void initLed(void);
+
 static void drawSplashscreen(void);
 static void showLocalTemp(void);
 static void showExternalTemp(void);
@@ -35,9 +39,8 @@ static void showTempScreen(const char* headline1, int temp1, const char* line3 =
 
 
 static int getExternalTemp(void);
-
-
 static void updateRect(void);
+static void flipLed(void);
 
 static bool isTempValid(float temp);
 static bool isHumValid(float hum);
@@ -48,6 +51,7 @@ void setup(void)
   Serial.println("");
 
   initLcd();
+  initLed();
   initDht();
   initWifi();
   drawSplashscreen();
@@ -76,7 +80,7 @@ void initLcd(void)
 {
   tft.init();
   tft.fillScreen(ILI9163_LIGHTGREY);
-  tft.setRotation(2);
+  tft.setRotation(0);
   tft.setTextSize(1);
 
   Serial.print("TFT_WIDTH: ");
@@ -97,6 +101,15 @@ void initDht(void)
   digitalWrite(GPIO_DHT_GND, 0);
 
   dht.begin();
+}
+
+void initLed(void)
+{
+  pinMode(GPIO_LED_GREEN, OUTPUT);
+  digitalWrite(GPIO_LED_GREEN, 1);
+
+  pinMode(GPIO_LED_RED, OUTPUT);
+  digitalWrite(GPIO_LED_RED, 1);
 }
 
 void drawSplashscreen(void)
@@ -142,6 +155,18 @@ void checkWifi(void)
   }
 }
 
+void flipLed(void)
+{
+  static int greenState = 1;
+  static int redState = 0;
+
+  greenState = 1 - greenState;
+  redState = 1 - greenState;
+  digitalWrite(GPIO_LED_GREEN, greenState);
+  digitalWrite(GPIO_LED_RED, redState);
+}
+
+
 void updateRect(void)
 {
   for (uint32_t color : {ILI9163_RED, ILI9163_GREEN, ILI9163_BLUE, ILI9163_NAVY})
@@ -151,6 +176,7 @@ void updateRect(void)
       tft.fillRect(0, 75, i, 5, color);
       delay(10);
     }
+    flipLed();
   }
 }
 
@@ -189,7 +215,7 @@ static void showTempScreen(uint32_t bgColor, const char* headline, int temp, con
   if (line3)
   {
     tft.setTextColor(ILI9163_DARKGREY, bgColor);
-    tft.setCursor(0, 80, 4);
+    tft.setCursor(0, 78, 4);
     tft.println(line3);
   }
 
@@ -202,7 +228,7 @@ static void showTempScreen(uint32_t bgColor, const char* headline, int temp, con
 
 static void showLocalTemp(void)
 {
-  static float oldTemp;
+  static float oldTemp = TEMP_ERROR;
   static float oldHum;
 
   float temp = dht.readTemperature();
@@ -228,7 +254,7 @@ static void showLocalTemp(void)
 
 static void showExternalTemp(void)
 {
-  showTempScreen(ILI9163_CYAN, "Temp zew.", externalTemp, "Sonina");  
+  showTempScreen(ILI9163_MAROON, "Temp zew.", externalTemp, "Sonina");  
 }
 
 static HTTPClient http;
