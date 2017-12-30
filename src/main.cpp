@@ -1,28 +1,33 @@
 #include <Arduino.h>
 
 #include <ESP8266WiFi.h>
+#include <ESP8266WiFiMulti.h>
+
 #include <ESP8266mDNS.h>
 #include <ESP8266HTTPClient.h>
 #include <DHT.h>
 #include <TFT_eSPI.h>
 #include <SPI.h>
 #include <ArduinoJson.h>
-#include <initializer_list>
 
 static const int GPIO_DHT_DATA = 5;
 static const int GPIO_DHT_3V = 16;
 static const int GPIO_DHT_GND = 4;
-static const int GPIO_LED_GREEN = 1;
-static const int GPIO_LED_RED = 10;
 
-static const char* SSID = "nowaki_Wifi";
-static const char* PASSWORD = "knowak123";
+static const int GPIO_LED_GREEN = 10;
+static const int GPIO_LED_RED = 12;
+static const int GPIO_LED_BLUE = 0;
+
+
+
 
 static const int TEMP_ERROR = 0xFFFF;
 
 static MDNSResponder mdns;
 static DHT dht(GPIO_DHT_DATA, DHT11); 
 static TFT_eSPI tft;
+static ESP8266WiFiMulti wifiMulti;
+
 
 static int externalTemp = TEMP_ERROR;
 
@@ -110,6 +115,9 @@ void initLed(void)
 
   pinMode(GPIO_LED_RED, OUTPUT);
   digitalWrite(GPIO_LED_RED, 1);
+
+  pinMode(GPIO_LED_BLUE, OUTPUT);
+  digitalWrite(GPIO_LED_BLUE, 1);
 }
 
 void drawSplashscreen(void)
@@ -129,7 +137,9 @@ void drawSplashscreen(void)
 
 void initWifi(void)
 {
-  WiFi.begin(SSID, PASSWORD);
+  WiFi.mode(WIFI_STA);
+  wifiMulti.addAP("nowaki_Wifi", "knowak123");
+  wifiMulti.addAP("gacoperek", "fedjp5cwcaZ6");
 }
 
 void checkWifi(void)
@@ -143,7 +153,7 @@ void checkWifi(void)
       checked = true;
 
       Serial.print("Connected to ");
-      Serial.println(SSID);
+      Serial.println(WiFi.SSID().c_str());
       Serial.print("IP address: ");
       Serial.println(WiFi.localIP());
 
@@ -159,11 +169,14 @@ void flipLed(void)
 {
   static int greenState = 1;
   static int redState = 0;
+  static int blueState = 1;
 
   greenState = 1 - greenState;
-  redState = 1 - greenState;
+  redState = 1 - redState;
+  blueState = 1 - blueState;
   digitalWrite(GPIO_LED_GREEN, greenState);
   digitalWrite(GPIO_LED_RED, redState);
+  digitalWrite(GPIO_LED_BLUE, blueState);
 }
 
 
