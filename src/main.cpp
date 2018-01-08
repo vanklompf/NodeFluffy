@@ -4,11 +4,14 @@
 #include <ESP8266WiFiMulti.h>
 
 #include <ESP8266mDNS.h>
-#include <ESP8266HTTPClient.h>
-#include <DHT.h>
 #include <TFT_eSPI.h>
 #include <SPI.h>
-#include <ArduinoJson.h>
+
+#include <Ticker.h>
+
+#include "InetWeather.h"
+#include "TempSensor.h"
+
 
 static const int GPIO_DHT_DATA = 5;
 static const int GPIO_DHT_3V = 16;
@@ -18,34 +21,33 @@ static const int GPIO_LED_GREEN = 10;
 static const int GPIO_LED_RED = 12;
 static const int GPIO_LED_BLUE = 0;
 
-
-
+Ticker myTimer;
 
 static const int TEMP_ERROR = 0xFFFF;
 
 static MDNSResponder mdns;
-static DHT dht(GPIO_DHT_DATA, DHT11); 
+
+static TempSensor tempSensor(Serial, DHT11, GPIO_DHT_DATA, GPIO_DHT_3V, GPIO_DHT_GND);
+static InetWeather inetWeather(Serial);
+static Print& logger = Serial;
+
 static TFT_eSPI tft;
 static ESP8266WiFiMulti wifiMulti;
 
 
-static int externalTemp = TEMP_ERROR;
+static void initWifi();
+static void checkWifi();
+static void initLcd();
+static void initLed();
 
-static void initDht(void);
-static void initWifi(void);
-static void checkWifi(void);
-static void initLcd(void);
-static void initLed(void);
-
-static void drawSplashscreen(void);
-static void showLocalTemp(void);
-static void showExternalTemp(void);
+static void drawSplashscreen();
+static void showLocalTemp();
+static void showExternalTemp();
 static void showTempScreen(const char* headline1, int temp1, const char* line3 = nullptr, const char* line4 = nullptr);
 
 
-static int getExternalTemp(void);
-static void updateRect(void);
-static void flipLed(void);
+static void updateRect();
+static void flipLed();
 
 static bool isTempValid(float temp);
 static bool isHumValid(float hum);
@@ -57,8 +59,9 @@ void setup(void)
 
   initLcd();
   initLed();
-  initDht();
+  tempSensor.Init();
   initWifi();
+  inetWeather.init();
   drawSplashscreen();
 }
 
@@ -70,46 +73,29 @@ void loop(void)
 
     showLocalTemp();
     updateRect();
-
-    if (externalTemp == TEMP_ERROR)
-    {
-      externalTemp = getExternalTemp();
-    }
     showExternalTemp();
     updateRect();
   }
-  externalTemp = TEMP_ERROR;
 }
 
-void initLcd(void)
+void initLcd()
 {
+  ("initLcd()");
   tft.init();
   tft.fillScreen(ILI9163_LIGHTGREY);
   tft.setRotation(0);
   tft.setTextSize(1);
 
-  Serial.print("TFT_WIDTH: ");
-  Serial.println(TFT_WIDTH);
-
-  Serial.print("TFT_HEIGHT: ");
-  Serial.println(TFT_HEIGHT);
+  logger.printf("TFT_WIDTH: %d\n", TFT_WIDTH);
+  logger.printf("TFT_HEIGHT: %d\n", TFT_HEIGHT);
 #ifdef ILI9163_DRIVER
-    Serial.println("Using ILI9163_DRIVER");
+  logger.println("Using ILI9163_DRIVER");
 #endif
 }
 
-void initDht(void)
+void initLed()
 {
-  pinMode(GPIO_DHT_3V, OUTPUT);
-  digitalWrite(GPIO_DHT_3V, 1);
-  pinMode(GPIO_DHT_GND, OUTPUT);
-  digitalWrite(GPIO_DHT_GND, 0);
-
-  dht.begin();
-}
-
-void initLed(void)
-{
+  logger.println(__PRETTY_FUNCTION__);
   pinMode(GPIO_LED_GREEN, OUTPUT);
   digitalWrite(GPIO_LED_GREEN, 1);
 
@@ -120,8 +106,9 @@ void initLed(void)
   digitalWrite(GPIO_LED_BLUE, 1);
 }
 
-void drawSplashscreen(void)
+void drawSplashscreen()
 {
+  logger.println(__PRETTY_FUNCTION__);
   for(int32_t x=0; x<128; x++)
   {
       tft.drawFastVLine(x, 0, 128, ILI9163_BLUE);
@@ -135,15 +122,17 @@ void drawSplashscreen(void)
   }
 }
 
-void initWifi(void)
+void initWifi()
 {
+  logger.println(__PRETTY_FUNCTION__);
   WiFi.mode(WIFI_STA);
   wifiMulti.addAP("nowaki_Wifi", "knowak123");
   wifiMulti.addAP("gacoperek", "fedjp5cwcaZ6");
 }
 
-void checkWifi(void)
+void checkWifi()
 {
+  logger.println(__PRETTY_FUNCTION__);
   static bool checked = false;
 
   if (!checked)
@@ -165,7 +154,7 @@ void checkWifi(void)
   }
 }
 
-void flipLed(void)
+void flipLed()
 {
   static int greenState = 1;
   static int redState = 0;
@@ -180,7 +169,7 @@ void flipLed(void)
 }
 
 
-void updateRect(void)
+void updateRect()
 {
   for (uint32_t color : {ILI9163_RED, ILI9163_GREEN, ILI9163_BLUE, ILI9163_NAVY})
   {
@@ -239,18 +228,20 @@ static void showTempScreen(uint32_t bgColor, const char* headline, int temp, con
   }
 }
 
-static void showLocalTemp(void)
+static void showLocalTemp()
 {
+  //LOG("showLocalTemp()");
+
   static float oldTemp = TEMP_ERROR;
   static float oldHum;
 
-  float temp = dht.readTemperature();
-  float hum = dht.readHumidity();
+  float temp = tempSensor.readTemp();
+  float hum = tempSensor.readHum();
 
-  Serial.print("Temp:");
-  Serial.println(temp);
-  Serial.print("Hum:");
-  Serial.println(hum);
+  //LOG("Temp:");
+  //LOG(temp);
+  //LOG("Hum:");
+  //LOG(hum);
 
   temp = round(temp);
   hum = round(hum);
@@ -265,44 +256,8 @@ static void showLocalTemp(void)
   showTempScreen(ILI9163_ORANGE, "Temp", (int)oldTemp, "Wilgotnosc", tbs);
 }
 
-static void showExternalTemp(void)
+static void showExternalTemp()
 {
-  showTempScreen(ILI9163_MAROON, "Temp zew.", externalTemp, "Sonina");  
+  //LOG("showExternalTemp()");
+  showTempScreen(ILI9163_MAROON, "Temp zew.", inetWeather.getTemp(), "Sonina");  
 }
-
-static HTTPClient http;
-static DynamicJsonBuffer jsonBuffer(4*JSON_OBJECT_SIZE(1) + 2*JSON_OBJECT_SIZE(4));
-static const char* url = 
-"http://query.yahooapis.com/v1/public/yql?q=select%20item.condition%20from%20weather.forecast%20where%20woeid%3D519340%20and%20u%3D'c'&format=json&env=store%3A%2F%2Fdatatables.org%2Falltableswithkeys";
-static int getExternalTemp(void)
-{
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    Serial.println("showExternalTemp");
-    http.begin(url);
-    //http.setTimeout(2000);
-    http.addHeader("Content-Type", "application/json");
-    int httpCode = http.GET();
-    Serial.printf("Http Code: %d\n", httpCode);
-
-    JsonObject& root = jsonBuffer.parseObject(http.getString());
-    if (!root.success()) 
-    {
-      Serial.println("Parsing failed!");
-      return TEMP_ERROR;
-    }
-    const char* temp = root["query"]["results"]["channel"]["item"]["condition"]["temp"];
-    
-    http.end();
-
-    Serial.print("Json temp: ");  
-    Serial.println(temp);
-
-    return atoi(temp);
-  }
-  else
-  {
-    return TEMP_ERROR;
-  }
-}
-
